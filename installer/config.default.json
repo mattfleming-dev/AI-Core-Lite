@@ -1,0 +1,14 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 8100,
+  "upstream_url": "http://127.0.0.1:8080",
+  "db_path": "../data/rag.sqlite",
+  "default_collection": "default",
+  "auto_rag": true,
+  "top_k": 5,
+  "admin_key": "",
+  "embed": {
+    "mode": "auto",
+    "model": ""
+  }
+}

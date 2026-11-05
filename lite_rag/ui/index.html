@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lite RAG</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1c2330;--muted:#6b7686;--line:#e3e7ee;--accent:#3b6cf6;--ok:#1aa36b;--bad:#d64545}
+@media (prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--text:#e6ebf2;--muted:#8b97a8;--line:#273141;--accent:#6c93ff;--ok:#3ccf91;--bad:#ff7070}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--card);border-bottom:1px solid var(--line)}
+h1{font-size:17px;margin:0;font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+main{max-width:980px;margin:24px auto;padding:0 20px;display:grid;gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+h2{font-size:15px;margin:0 0 12px;font-weight:600}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grow{flex:1;min-width:160px}
+select,input[type=text],input[type=number],textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit}
+textarea{min-height:80px;resize:vertical}
+button{padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);font:inherit;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:hover{filter:brightness(.96)}
+button.link{border:0;background:none;color:var(--bad);padding:2px 6px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+.drop.over{border-color:var(--accent);color:var(--accent);background:var(--bg)}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:7px 4px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:500;font-size:12px}
+.muted{color:var(--muted)}.small{font-size:12px}
+.hit{border-left:3px solid var(--accent);padding:6px 12px;margin:8px 0;background:var(--bg);border-radius:0 8px 8px 0}
+.copy{display:flex;gap:8px;align-items:center;margin:6px 0}.copy code{flex:1;padding:7px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:auto;white-space:nowrap}
+label.switch{display:flex;gap:8px;align-items:center;cursor:pointer}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none}
+#toast.show{opacity:.95}
+</style>
+</head>
+<body>
+<header>
+  <h1>Lite RAG</h1>
+  <span class="pill"><span id="upDot" class="dot"></span><span id="upText">Checking…</span></span>
+  <span class="pill" id="embedText"></span>
+</header>
+<main>
+  <section class="card">
+    <h2>Knowledge</h2>
+    <div class="row" style="margin-bottom:14px">
+      <div class="grow"><select id="collection"></select></div>
+      <input type="text" id="newName" placeholder="New collection name" style="max-width:220px">
+      <button id="createBtn">Create</button>
+      <button id="deleteBtn" class="link">Delete collection</button>
+    </div>
+    <div class="drop" id="drop">Drop files here, or click to choose<br><span class="small">Text, code, Markdown, HTML, PDF</span></div>
+    <input type="file" id="files" multiple hidden>
+    <div class="row" style="margin-top:14px">
+      <input class="grow" type="text" id="folder" placeholder="Or index a folder on this PC, e.g. C:\Docs">
+      <button id="folderBtn">Index folder</button>
+    </div>
+    <details style="margin-top:12px"><summary class="muted">Paste text</summary>
+      <textarea id="pasteText" placeholder="Paste notes or text to remember…" style="margin-top:8px"></textarea>
+      <div class="row" style="margin-top:8px"><input class="grow" type="text" id="pasteName" placeholder="Name (optional)"><button id="pasteBtn">Add</button></div>
+    </details>
+    <table style="margin-top:16px"><thead><tr><th>Document</th><th style="width:70px">Chunks</th><th style="width:60px"></th></tr></thead><tbody id="docs"></tbody></table>
+    <div id="empty" class="muted" style="padding:10px 0">Nothing indexed yet.</div>
+  </section>
+
+  <section class="card">
+    <h2>Try a search</h2>
+    <div class="row"><input class="grow" type="text" id="query" placeholder="Ask something your documents should answer"><button class="primary" id="searchBtn">Search</button></div>
+    <div id="hits"></div>
+  </section>
+
+  <section class="card">
+    <h2>Connect your app</h2>
+    <div class="muted small">Point any OpenAI or Anthropic client at these addresses. Images and tool calls pass straight through, so vision models work as normal.</div>
+    <div class="copy"><span class="muted" style="width:90px">OpenAI</span><code id="oaUrl"></code><button data-copy="oaUrl">Copy</button></div>
+    <div class="copy"><span class="muted" style="width:90px">Anthropic</span><code id="anUrl"></code><button data-copy="anUrl">Copy</button></div>
+    <div class="muted small" style="margin-top:6px">Models available upstream: <span id="models">–</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Settings</h2>
+    <div class="row">
+      <label class="switch"><input type="checkbox" id="auto"> Use my documents automatically</label>
+      <div class="grow"></div>
+      <span class="muted">Default collection</span><select id="defaultColl" style="width:auto"></select>
+      <span class="muted">Passages</span><input type="number" id="topk" min="1" max="20" style="width:70px">
+      <button class="primary" id="saveBtn">Save</button>
+    </div>
+    <div class="muted small" style="margin-top:8px">Per request, clients can send <code>"rag": {"collection": "name"}</code> or <code>"rag": false</code> to override.</div>
+  </section>
+
+  <section class="card">
+    <h2>Recent requests</h2>
+    <table><thead><tr><th>Time</th><th>API</th><th>Model</th><th>Sources used</th><th>Status</th></tr></thead><tbody id="activity"></tbody></table>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+let state = {collections: []};
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
+async function api(path, body, method){
+  const headers = {'Content-Type':'application/json'};
+  const key = localStorage.getItem('adminKey'); if(key) headers.Authorization='Bearer '+key;
+  let r = await fetch(path, {method: method || (body ? 'POST' : 'GET'), headers, body: body ? JSON.stringify(body) : undefined});
+  if(r.status===401){const k=prompt('Admin key'); if(k){localStorage.setItem('adminKey',k); return api(path,body,method)}}
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error((data.error && data.error.message) || ('HTTP '+r.status));
+  return data;
+}
+function opt(sel, names, value){sel.innerHTML='';names.forEach(n=>{const o=document.createElement('option');o.value=o.textContent=n;sel.appendChild(o)});if(names.includes(value))sel.value=value}
+async function refresh(){
+  const s = await api('/rag/status'); state = s;
+  $('upDot').className = 'dot ' + (s.upstream_ok ? 'ok' : 'bad');
+  $('upText').textContent = s.upstream_ok ? 'Model server connected' : 'Model server not reachable: ' + s.upstream;
+  $('embedText').textContent = 'Search: ' + (s.embedder.startsWith('hash') ? 'built-in (no embedding model set)' : s.embedder);
+  $('oaUrl').textContent = s.endpoints.openai; $('anUrl').textContent = s.endpoints.anthropic;
+  $('models').textContent = s.models.length ? s.models.join(', ') : 'none found';
+  const names = s.collections.map(c=>c.name), cur = $('collection').value || s.settings.default_collection;
+  opt($('collection'), names, cur); opt($('defaultColl'), names, s.settings.default_collection);
+  $('auto').checked = s.settings.auto_rag; $('topk').value = s.settings.top_k;
+  await loadDocs(); await loadActivity();
+}
+async function loadDocs(){
+  const c = $('collection').value; const tb = $('docs'); tb.innerHTML='';
+  if(!c){$('empty').style.display='';return}
+  const {documents} = await api('/rag/documents?collection='+encodeURIComponent(c));
+  $('empty').style.display = documents.length ? 'none' : '';
+  documents.forEach(d=>{const tr=document.createElement('tr');
+    const name=document.createElement('td');name.textContent=d.source.split(/[\\/]/).pop();name.title=d.source;
+    const n=document.createElement('td');n.textContent=d.chunks;
+    const x=document.createElement('td');const b=document.createElement('button');b.className='link';b.textContent='Remove';
+    b.onclick=async()=>{await api('/rag/documents/delete',{collection:c,source:d.source});loadDocs();refresh()};x.appendChild(b);
+    tr.append(name,n,x);tb.appendChild(tr)});
+}
+async function loadActivity(){
+  const {activity} = await api('/rag/activity'); const tb=$('activity'); tb.innerHTML='';
+  activity.slice(0,8).forEach(a=>{const tr=document.createElement('tr');
+    [new Date(a.time*1000).toLocaleTimeString(),a.endpoint,a.model||'–',a.sources,a.status].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});tb.appendChild(tr)});
+}
+function currentCollection(){const c=$('collection').value||$('newName').value.trim()||'default';return c}
+async function upload(files){
+  const collection = currentCollection(); let n=0;
+  for(const f of files){
+    try{
+      const buf = new Uint8Array(await f.arrayBuffer()); let bin=''; for(let i=0;i<buf.length;i+=32768) bin+=String.fromCharCode.apply(null,buf.subarray(i,i+32768));
+      await api('/rag/upload',{collection,filename:f.name,data_b64:btoa(bin)}); n++;
+    }catch(e){toast(f.name+': '+e.message)}
+  }
+  if(n) toast('Indexed '+n+' file'+(n>1?'s':'')); await refresh(); $('collection').value=collection; loadDocs();
+}
+const drop=$('drop');
+drop.onclick=()=>$('files').click();
+$('files').onchange=e=>upload([...e.target.files]);
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');upload([...e.dataTransfer.files])};
+$('collection').onchange=loadDocs;
+$('createBtn').onclick=async()=>{const n=$('newName').value.trim();if(!n)return;
+  await api('/rag/ingest',{collection:n,source:'welcome.txt',text:'Collection created.'});$('newName').value='';await refresh();$('collection').value=n;loadDocs();toast('Created '+n)};
+$('deleteBtn').onclick=async()=>{const c=$('collection').value;if(!c||!confirm('Delete collection "'+c+'" and all its documents?'))return;
+  await api('/rag/collections/'+encodeURIComponent(c),null,'DELETE');toast('Deleted');refresh()};
+$('folderBtn').onclick=async()=>{const p=$('folder').value.trim();if(!p)return;toast('Indexing…');
+  try{const r=await api('/rag/ingest',{collection:currentCollection(),path:p});toast(r.indexed+' indexed, '+r.skipped+' unchanged'+(r.errors.length?', '+r.errors.length+' errors':''));refresh()}catch(e){toast(e.message)}};
+$('pasteBtn').onclick=async()=>{const t=$('pasteText').value.trim();if(!t)return;
+  await api('/rag/ingest',{collection:currentCollection(),source:$('pasteName').value.trim()||'note-'+Date.now(),text:t});$('pasteText').value='';toast('Added');refresh()};
+$('searchBtn').onclick=async()=>{const q=$('query').value.trim();if(!q)return;
+  const r=await api('/rag/search',{query:q,collection:$('collection').value});const box=$('hits');box.innerHTML='';
+  if(!r.hits.length){box.innerHTML='<div class="muted" style="padding:10px 0">No matching passages.</div>';return}
+  r.hits.forEach((h,i)=>{const d=document.createElement('div');d.className='hit';
+    const t=document.createElement('div');t.className='small muted';t.textContent='['+(i+1)+'] '+h.source.split(/[\\/]/).pop();
+    const p=document.createElement('div');p.textContent=h.text.length>400?h.text.slice(0,400)+'…':h.text;d.append(t,p);box.appendChild(d)})};
+$('query').addEventListener('keydown',e=>{if(e.key==='Enter')$('searchBtn').click()});
+$('saveBtn').onclick=async()=>{await api('/rag/settings',{auto_rag:$('auto').checked,default_collection:$('defaultColl').value,top_k:+$('topk').value||5});toast('Saved')};
+document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText($(b.dataset.copy).textContent);toast('Copied')});
+refresh().catch(e=>toast(e.message)); setInterval(()=>refresh().catch(()=>{}),15000);
+</script>
+</body>
+</html>
