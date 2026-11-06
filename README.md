@@ -62,4 +62,4 @@ python -m unittest discover -s tests
 
 ## License
 
-No project license is included. Do not assume permission to reuse or redistribute this code.
+This project is licensed under the [MIT License](LICENSE).

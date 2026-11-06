@@ -19,4 +19,4 @@ The local database may contain indexed document text and metadata. Do not attach
 
 ## Licensing
 
-No project license is included. Public visibility does not grant permission to reuse or redistribute this code.
+This project is licensed under the [MIT License](LICENSE).
